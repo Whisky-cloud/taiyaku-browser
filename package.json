@@ -9,7 +9,7 @@
     "express": "^4.18.2",
     "axios": "^1.6.0",
     "cheerio": "^1.0.0-rc.12",
-    "translate-google": "^1.0.0"
+    "google-translate-open-api": "^1.3.7"
   }
 }
 
