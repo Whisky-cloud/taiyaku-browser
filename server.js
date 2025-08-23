@@ -2,16 +2,13 @@
 const express = require("express");
 const cheerio = require("cheerio");
 const axios = require("axios");
-const translate = require("@vitalets/google-translate-api");
+const translate = require("google-translate-open-api").default;
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(express.json({ limit: "20mb" }));
 app.use(express.static("public"));
-
-// ページごとの文キャッシュ
-const pageCache = {};
 
 // 文を分割する関数（略語対応）
 function splitSentences(text) {
@@ -33,6 +30,9 @@ function splitSentences(text) {
   return sentences.filter(s => s.length > 0);
 }
 
+// ページごとの文キャッシュ
+const pageCache = {};
+
 // EventSource でストリーム翻訳
 app.get("/api/translate-stream", async (req, res) => {
   const url = req.query.url;
@@ -45,7 +45,6 @@ app.get("/api/translate-stream", async (req, res) => {
   if (res.flushHeaders) res.flushHeaders();
 
   try {
-    // ページキャッシュから取得 or 新規取得
     let sentences;
     if (pageCache[url]) {
       sentences = pageCache[url];
@@ -53,23 +52,16 @@ app.get("/api/translate-stream", async (req, res) => {
       const { data } = await axios.get(url, { headers: { "User-Agent": "Mozilla/5.0" } });
       const $ = cheerio.load(data);
       let originalText = "";
-
-      // OL LI の本文を取得
       $("ol li").each((i, el) => {
-        let t = $(el).text();
-        t = t.replace(/\s+/g, " ");
+        let t = $(el).text().replace(/\s+/g, " ");
         originalText += t + " ";
       });
-
-      // <ol><li> がなければ <p> も取得
       if (!originalText.trim()) {
         $("p").each((i, el) => {
-          let t = $(el).text();
-          t = t.replace(/\s+/g, " ");
+          let t = $(el).text().replace(/\s+/g, " ");
           originalText += t + " ";
         });
       }
-
       sentences = splitSentences(originalText);
       pageCache[url] = sentences;
     }
@@ -82,8 +74,8 @@ app.get("/api/translate-stream", async (req, res) => {
       const batch = sentences.slice(i, i + batchSize).join(" ");
       let jaBatch;
       try {
-        const resTranslate = await translate(batch, { from: "en", to: "ja" });
-        jaBatch = resTranslate.text;
+        const result = await translate(batch, { tld: "com", to: "ja" });
+        jaBatch = result.data[0] ? result.data[0][0][0] : "(翻訳失敗)";
       } catch (err) {
         console.error("Translation error:", err);
         jaBatch = "(翻訳失敗)";
@@ -100,7 +92,6 @@ app.get("/api/translate-stream", async (req, res) => {
 
     res.write("event: done\ndata: \n\n");
     res.end();
-
   } catch (err) {
     console.error("Fetch/Translate error:", err.message);
     res.write(`event: error\ndata: ${JSON.stringify(err.message)}\n\n`);
