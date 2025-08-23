@@ -1,79 +1,104 @@
+// server.js
 const express = require("express");
-const axios = require("axios");
 const cheerio = require("cheerio");
-const translate = require("translate-google");
+const axios = require("axios");
+const translate = require("google-translate-open-api").default;
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const port = process.env.PORT || 3000;
 
+app.use(express.json({ limit: "20mb" }));
 app.use(express.static("public"));
 
-// 文章を分割する関数（句点や改行で分割）
-function splitIntoSentences(text) {
-  return text
-    .split(/(?<=[.!?。！？])\s+/)
-    .map(s => s.trim())
-    .filter(Boolean);
+// 文を分割する関数（略語対応）
+function splitSentences(text) {
+  const abbrevs = ["Mr","Mrs","Ms","Dr","St","Prof","etc","i.e","e.g","vs"];
+  const regex = new RegExp(
+    "\\b(?:" + abbrevs.join("|") + ")\\.$|" +
+    "([.!?])\\s+(?=[A-Z])",
+    "g"
+  );
+
+  let sentences = [];
+  let start = 0;
+  text.replace(regex, (match, punct, offset) => {
+    sentences.push(text.slice(start, offset + (punct ? 1 : 0)).trim());
+    start = offset + match.length;
+    return match;
+  });
+  if (start < text.length) sentences.push(text.slice(start).trim());
+  return sentences.filter(s => s.length > 0);
 }
 
-// 翻訳エンドポイント
-app.get("/translate", async (req, res) => {
-  const { url } = req.query;
-  if (!url) {
-    return res.status(400).json({ error: "URL is required" });
-  }
+// ページごとの文キャッシュ
+const pageCache = {};
+
+// EventSource でストリーム翻訳
+app.get("/api/translate-stream", async (req, res) => {
+  const url = req.query.url;
+  const start = parseInt(req.query.start || "0", 10);
+  if (!url) return res.status(400).send("url required");
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  if (res.flushHeaders) res.flushHeaders();
 
   try {
-    // ページ取得
-    const response = await axios.get(url);
-    const $ = cheerio.load(response.data);
-
-    // 本文テキスト抽出
-    let text = $("body").text();
-    let sentences = splitIntoSentences(text);
-
-    // EventStream ヘッダ設定
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-
-    // バッチサイズ（3文ずつ翻訳）
-    const batchSize = 3;
-
-    // バッチごとに翻訳して順番に送信
-    for (let i = 0; i < sentences.length; i += batchSize) {
-      const batch = sentences.slice(i, i + batchSize);
-
-      let jaBatch;
-      try {
-        jaBatch = await translate(batch, { from: "en", to: "ja" });
-      } catch {
-        // 1回リトライ
-        try {
-          jaBatch = await translate(batch, { from: "en", to: "ja" });
-        } catch {
-          jaBatch = "(翻訳失敗)";
-        }
-      }
-
-      // jaBatch が配列で返る場合と文字列で返る場合の両対応
-      if (Array.isArray(jaBatch)) {
-        jaBatch.forEach(j => {
-          res.write(`data: ${JSON.stringify({ ja: j })}\n\n`);
+    let sentences;
+    if (pageCache[url]) {
+      sentences = pageCache[url];
+    } else {
+      const { data } = await axios.get(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+      const $ = cheerio.load(data);
+      let originalText = "";
+      $("ol li").each((i, el) => {
+        let t = $(el).text().replace(/\s+/g, " ");
+        originalText += t + " ";
+      });
+      if (!originalText.trim()) {
+        $("p").each((i, el) => {
+          let t = $(el).text().replace(/\s+/g, " ");
+          originalText += t + " ";
         });
-      } else {
-        res.write(`data: ${JSON.stringify({ ja: jaBatch })}\n\n`);
       }
+      sentences = splitSentences(originalText);
+      pageCache[url] = sentences;
     }
 
-    res.write("data: [DONE]\n\n");
+    const batchSize = 3;
+    const maxBatchSentences = 100;
+    const end = Math.min(sentences.length, start + maxBatchSentences);
+
+    for (let i = start; i < end; i += batchSize) {
+      const batch = sentences.slice(i, i + batchSize).join(" ");
+      let jaBatch;
+      try {
+        const result = await translate(batch, { tld: "com", to: "ja" });
+        jaBatch = result.data[0] ? result.data[0][0][0] : "(翻訳失敗)";
+      } catch (err) {
+        console.error("Translation error:", err);
+        jaBatch = "(翻訳失敗)";
+      }
+
+      res.write(`data: ${JSON.stringify({
+        index: i,
+        original: sentences.slice(i, i + batchSize).join(" "),
+        text: jaBatch
+      })}\n\n`);
+
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    res.write("event: done\ndata: \n\n");
     res.end();
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch or translate" });
+    console.error("Fetch/Translate error:", err.message);
+    res.write(`event: error\ndata: ${JSON.stringify(err.message)}\n\n`);
+    res.end();
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
 });
