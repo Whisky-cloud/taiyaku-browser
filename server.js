@@ -2,7 +2,10 @@
 const express = require("express");
 const cheerio = require("cheerio");
 const axios = require("axios");
-const translate = require("google-translate-open-api").default;
+const deepl = require("deepl-node");
+
+// 環境変数からDeepL APIキーを取得
+const translator = new deepl.Translator(process.env.DEEPL_API_KEY);
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -74,8 +77,9 @@ app.get("/api/translate-stream", async (req, res) => {
       const batch = sentences.slice(i, i + batchSize).join(" ");
       let jaBatch;
       try {
-        const result = await translate(batch, { tld: "com", to: "ja" });
-        jaBatch = result.data[0] ? result.data[0][0][0] : "(翻訳失敗)";
+        // DeepL APIで翻訳
+        const result = await translator.translateText(batch, null, "ja");
+        jaBatch = result.text;
       } catch (err) {
         console.error("Translation error:", err);
         jaBatch = "(翻訳失敗)";
