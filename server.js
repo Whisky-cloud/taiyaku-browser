@@ -66,7 +66,7 @@ app.get("/api/translate-stream", async (req, res) => {
       pageCache[url] = sentences;
     }
 
-    const batchSize = 3;
+    const batchSize = 1;
     const maxBatchSentences = 100;
     const end = Math.min(sentences.length, start + maxBatchSentences);
 
