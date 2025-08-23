@@ -66,6 +66,11 @@ h2 { margin-top: 0; }
   cursor: pointer;
 }
 
+/* 下段：右詰めで元の大きさ */
+#controls .control-row:last-child {
+  justify-content: flex-end;
+}
+
 /* 下段：url */
 #urlInput {
   flex: 0 0 50%;
