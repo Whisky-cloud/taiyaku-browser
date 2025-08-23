@@ -41,7 +41,7 @@ h2 { margin-top: 0; }
   margin-bottom: 6px;
 }
 
-/* 上段：検索ボックスを半分に */
+/* 上段：検索ボックス/
 #keywordInput {
   flex: 0 0 50%;
   padding: 16px;
@@ -52,7 +52,7 @@ h2 { margin-top: 0; }
 }
 
 /* 上段の検索ボタン */
-.control-row button {
+#controls .control-row:first-child button {
   padding: 16px 24px;
   font-size: 32px;
   border-radius: 8px;
@@ -61,7 +61,7 @@ h2 { margin-top: 0; }
   cursor: pointer;
 }
 
-/* 下段：50％幅、ボタンは自動 */
+/* 下段：url */
 #urlInput {
   flex: 0 0 50%;
   padding: 8px;
@@ -69,6 +69,16 @@ h2 { margin-top: 0; }
   border-radius: 8px;
   border: 1px solid #b59b7b;
   background: var(--panel);
+}
+
+/* 下段のボタンも元のまま */
+#controls .control-row:last-child button {
+  padding: 8px 12px;
+  font-size: 16px;
+  border-radius: 8px;
+  border: 1px solid #b59b7b;
+  background: #f3e6cf;
+  cursor: pointer;
 }
 
 #log {
