@@ -41,6 +41,11 @@ h2 { margin-top: 0; }
   margin-bottom: 6px;
 }
 
+/* 上段：検索ボックスとボタンを右詰めに */
+#controls .control-row:first-child {
+  justify-content: flex-end;
+}
+
 /* 上段：検索ボックス*/
 #keywordInput {
   flex: 0 0 50%;
