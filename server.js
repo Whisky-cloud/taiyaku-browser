@@ -1,7 +1,8 @@
+// server.js
 const express = require("express");
 const cheerio = require("cheerio");
-const translate = require("translate-google");
 const axios = require("axios");
+const translate = require("@vitalets/google-translate-api");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -41,6 +42,7 @@ app.get("/api/translate-stream", async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  if (res.flushHeaders) res.flushHeaders();
 
   try {
     // ページキャッシュから取得 or 新規取得
@@ -54,8 +56,8 @@ app.get("/api/translate-stream", async (req, res) => {
 
       // OL LI の本文を取得
       $("ol li").each((i, el) => {
-        let t = $(el).text();               // HTMLタグを削除
-        t = t.replace(/\s+/g, " ");         // 改行・複数空白を1スペースに
+        let t = $(el).text();
+        t = t.replace(/\s+/g, " ");
         originalText += t + " ";
       });
 
@@ -72,17 +74,18 @@ app.get("/api/translate-stream", async (req, res) => {
       pageCache[url] = sentences;
     }
 
-    const batchSize = 3;    // 3文ごと
-    const maxBatchSentences = 100; // 一度に100文まで
-
+    const batchSize = 3;
+    const maxBatchSentences = 100;
     const end = Math.min(sentences.length, start + maxBatchSentences);
 
     for (let i = start; i < end; i += batchSize) {
       const batch = sentences.slice(i, i + batchSize).join(" ");
       let jaBatch;
       try {
-        jaBatch = await translate(batch, { from: "en", to: "ja" });
-      } catch {
+        const resTranslate = await translate(batch, { from: "en", to: "ja" });
+        jaBatch = resTranslate.text;
+      } catch (err) {
+        console.error("Translation error:", err);
         jaBatch = "(翻訳失敗)";
       }
 
